@@ -1,0 +1,23 @@
+meta {
+  name: Pix por omissao
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/pix
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body: length 20
+  res.body[0].status: eq "concluido"
+}
+
+tests {
+  test("valor mock = 100", function() {
+    expect(Number(res.body[0].valor)).to.equal(100);
+  });
+}

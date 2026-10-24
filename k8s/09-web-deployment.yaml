@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: tipsbank-web
+  labels: { app: web, team: web, env: dev }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: web }
+  template:
+    metadata:
+      labels: { app: web, team: web, env: dev }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101               # utilizador nginx da imagem nginx-unprivileged
+        runAsGroup: 101
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: web
+          image: REGISTRY/tipsbank-web:v1.0.0
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 32Mi }
+            limits:   { cpu: 250m, memory: 128Mi }
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            - name: tmp                # pid + temp paths (ver nginx.conf)
+              mountPath: /tmp
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: nginx-configuration
+        - name: tmp
+          emptyDir: {}
+---
+# LoadBalancer: com MetalLB/cloud recebe um IP externo (aponta tipsbank.local para ele).
+# Em kind/minikube sem LB usa: kubectl port-forward -n tipsbank-web svc/web 8080:8080
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: tipsbank-web
+  labels: { app: web }
+spec:
+  type: LoadBalancer
+  selector: { app: web }
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

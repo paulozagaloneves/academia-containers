@@ -1,0 +1,21 @@
+meta {
+  name: Compensacao - saldo depois igual
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{contasUrl}}/contas/11111111-1111-1111-1111-111111111111
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+tests {
+  test("saldo da origem foi reposto (compensação)", function() {
+    expect(Number(res.body.saldo)).to.equal(bru.getVar("saldoAntes"));
+  });
+}

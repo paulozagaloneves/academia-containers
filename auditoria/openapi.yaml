@@ -1,0 +1,224 @@
+openapi: 3.1.0
+info:
+  title: TipsBank — Auditoria
+  version: 1.0.0
+  description: |
+    Recebe eventos de negócio (ex.: transferências) e grava-os em ficheiros **JSONL**
+    (um JSON por linha) no diretório `DATA_DIR` (volume persistente; NFS em produção).
+    Expõe consultas só de leitura para a equipa de auditoria.
+
+    Não usa base de dados. Um ficheiro por dia (UTC): `eventos-YYYY-MM-DD.jsonl`.
+
+    Contrato de referência para a reescrita em .NET 10. **Não alterar** rotas nem campos.
+security: []   # APIs internas, sem autenticação (laboratório)
+servers:
+  - url: http://localhost:8083
+    description: Acesso direto ao container (docker compose)
+  - url: http://localhost:8080/api/auditoria
+    description: Através do proxy reverso do frontend web
+  - url: http://auditoria.tipsbank-auditoria.svc.cluster.local:8080
+    description: Dentro do cluster Kubernetes
+tags:
+  - name: health
+  - name: eventos
+  - name: observabilidade
+
+paths:
+  /health/live:
+    get:
+      tags: [health]
+      summary: Liveness
+      operationId: healthLive
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthStatus" }
+              example: { status: ok }
+
+  /health/ready:
+    get:
+      tags: [health]
+      summary: Readiness — DATA_DIR existe e é gravável
+      operationId: healthReady
+      responses:
+        "200":
+          description: Pronto
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthStatus" }
+              example: { status: ready }
+        "503":
+          description: Volume em falta ou só de leitura
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+              example: { detail: DATA_DIR nao gravavel }
+
+  /health/startup:
+    get:
+      tags: [health]
+      summary: Startup — inclui o diretório de dados em uso
+      operationId: healthStartup
+      responses:
+        "200":
+          description: Arranque concluído
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, data_dir]
+                properties:
+                  status: { type: string }
+                  data_dir: { type: string }
+              example: { status: started, data_dir: /data }
+
+  /metrics:
+    get:
+      tags: [observabilidade]
+      summary: Métricas Prometheus
+      description: Antes de responder, recalcula o gauge `auditoria_arquivo_bytes` (soma do tamanho de todos os `eventos-*.jsonl`).
+      operationId: metrics
+      responses:
+        "200":
+          description: Métricas em texto
+          content:
+            text/plain:
+              schema: { type: string }
+              example: |
+                # HELP auditoria_eventos_total Eventos recebidos
+                # TYPE auditoria_eventos_total counter
+                auditoria_eventos_total{tipo="transferencia"} 7
+                # HELP auditoria_arquivo_bytes Bytes totais dos arquivos de auditoria
+                # TYPE auditoria_arquivo_bytes gauge
+                auditoria_arquivo_bytes 2148
+
+  /eventos:
+    post:
+      tags: [eventos]
+      summary: Registar evento
+      description: |
+        Acrescenta (append) uma linha JSON ao ficheiro do dia com os campos recebidos mais
+        `id` (UUID v4) e `recebido_em` (ISO-8601 em UTC). Campos opcionais não enviados são
+        gravados como `null`. Incrementa `auditoria_eventos_total{tipo}`.
+      operationId: registarEvento
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Evento" }
+            examples:
+              transferencia:
+                summary: Evento enviado pela api-transacoes
+                value:
+                  tipo: transferencia
+                  transacao_id: 3b2f6a10-55c1-4e0f-8a39-9f4a1c7e2d11
+                  origem_id: 11111111-1111-1111-1111-111111111111
+                  destino_id: 22222222-2222-2222-2222-222222222222
+                  valor: "150.75"
+                  versao_app: v1
+              minimo:
+                summary: Só o campo obrigatório
+                value: { tipo: login }
+      responses:
+        "201":
+          description: Evento persistido; devolve o registo gravado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EventoRegistado" }
+              example:
+                id: 9c0e1f2a-3b4c-4d5e-8f60-718293a4b5c6
+                recebido_em: "2026-10-24T10:15:30.123456+00:00"
+                tipo: transferencia
+                transacao_id: 3b2f6a10-55c1-4e0f-8a39-9f4a1c7e2d11
+                origem_id: 11111111-1111-1111-1111-111111111111
+                destino_id: 22222222-2222-2222-2222-222222222222
+                valor: "150.75"
+                versao_app: v1
+        "422":
+          description: Corpo inválido (`tipo` em falta ou com menos de 3 caracteres). 400 também é aceitável.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "500":
+          description: Falha de I/O ao gravar no volume
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+              example: { detail: falha ao persistir evento }
+    get:
+      tags: [eventos]
+      summary: Listar eventos de um dia
+      description: |
+        Lê o ficheiro `eventos-{dia}.jsonl` (por omissão o dia atual, UTC) e devolve as
+        **últimas** `limit` linhas pela ordem em que foram gravadas. Ficheiro inexistente → `[]`.
+      operationId: listarEventos
+      parameters:
+        - name: dia
+          in: query
+          description: Data no formato `YYYY-MM-DD`. Omitido = hoje (UTC).
+          schema: { type: string, format: date, example: "2026-10-24" }
+        - name: limit
+          in: query
+          description: Máximo de eventos; valores acima de 500 são limitados a 500.
+          schema: { type: integer, default: 100, minimum: 1 }
+      responses:
+        "200":
+          description: Eventos
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/EventoRegistado" }
+
+  /arquivos:
+    get:
+      tags: [eventos]
+      summary: Listar ficheiros de auditoria existentes
+      description: Nomes dos ficheiros `eventos-*.jsonl` em `DATA_DIR`, ordenados alfabeticamente.
+      operationId: listarArquivos
+      responses:
+        "200":
+          description: Lista de nomes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: string }
+              example: [eventos-2026-10-23.jsonl, eventos-2026-10-24.jsonl]
+
+components:
+  schemas:
+    Evento:
+      type: object
+      required: [tipo]
+      properties:
+        tipo: { type: string, minLength: 3 }
+        transacao_id: { type: [string, "null"] }
+        origem_id: { type: [string, "null"] }
+        destino_id: { type: [string, "null"] }
+        valor: { type: [string, "null"], description: 'Valor como texto, ex. "150.75"' }
+        versao_app: { type: [string, "null"] }
+
+    EventoRegistado:
+      allOf:
+        - type: object
+          required: [id, recebido_em]
+          properties:
+            id: { type: string, format: uuid }
+            recebido_em: { type: string, format: date-time }
+        - $ref: "#/components/schemas/Evento"
+
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string }
+
+    Erro:
+      type: object
+      required: [detail]
+      properties:
+        detail: {}
+      additionalProperties: true

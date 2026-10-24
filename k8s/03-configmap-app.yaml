@@ -1,0 +1,11 @@
+# URLs dos serviços chamados pela api-transacoes (DNS interno do cluster: <svc>.<ns>.svc.cluster.local).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: svc-url-endpoints
+  namespace: tipsbank-transacoes
+data:
+  CONTAS_URL: "http://api-contas.tipsbank-contas.svc.cluster.local:8080"
+  AUDITORIA_URL: "http://auditoria.tipsbank-auditoria.svc.cluster.local:8080"
+  APP_VERSION: "v1"
+  LOG_LEVEL: "INFO"

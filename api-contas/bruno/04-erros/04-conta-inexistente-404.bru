@@ -1,0 +1,16 @@
+meta {
+  name: Conta inexistente 404
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/contas/00000000-0000-0000-0000-000000000000
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 404
+  res.body.detail: eq "conta nao encontrada"
+}

@@ -1,0 +1,27 @@
+meta {
+  name: Saldo insuficiente 422
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/contas/22222222-2222-2222-2222-222222222222/saldo
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "valor": "999999999.00",
+    "operacao": "debito"
+  }
+}
+
+assert {
+  res.status: eq 422
+  res.body.detail: eq "saldo insuficiente"
+}

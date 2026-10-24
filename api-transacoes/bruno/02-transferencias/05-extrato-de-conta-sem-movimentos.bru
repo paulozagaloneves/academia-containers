@@ -1,0 +1,16 @@
+meta {
+  name: Extrato de conta sem movimentos
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/extrato/00000000-0000-0000-0000-000000000000
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body: length 0
+}

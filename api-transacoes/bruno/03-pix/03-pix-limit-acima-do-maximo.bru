@@ -1,0 +1,16 @@
+meta {
+  name: Pix limit acima do maximo
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/pix?limit=50
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body: length 20
+}

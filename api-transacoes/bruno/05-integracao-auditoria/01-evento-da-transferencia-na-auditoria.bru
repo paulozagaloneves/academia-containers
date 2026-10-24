@@ -1,0 +1,25 @@
+meta {
+  name: Evento da transferencia na auditoria
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{auditoriaUrl}}/eventos?limit=500
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body: isArray
+}
+
+tests {
+  test("existe evento tipo=transferencia para txId", function() {
+    const ev = res.body.find(e => e.transacao_id === bru.getVar("txId"));
+    expect(ev, "evento não encontrado na auditoria").to.exist;
+    expect(ev.tipo).to.equal("transferencia");
+    expect(ev.versao_app).to.be.a("string");
+  });
+}

@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "TipsBank - api-transacoes",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

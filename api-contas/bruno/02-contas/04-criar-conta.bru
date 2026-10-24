@@ -1,0 +1,53 @@
+meta {
+  name: Criar conta
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/contas
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "titular": "Estagiário Academia",
+    "documento": "{{documento}}",
+    "senha": "segredo123",
+    "saldo_inicial": "1000"
+  }
+}
+
+assert {
+  res.status: eq 201
+  res.body.id: isString
+  res.body.titular: eq "Estagiário Academia"
+}
+
+script:pre-request {
+  // CPF aleatório de 11 dígitos para a conta não colidir entre execuções
+  const doc = String(Math.floor(Math.random() * 1e11)).padStart(11, "0");
+  bru.setVar("documento", doc);
+}
+
+script:post-response {
+  bru.setVar("contaId", res.body.id);
+}
+
+tests {
+  test("documento gravado", function() {
+    expect(res.body.documento).to.equal(bru.getVar("documento"));
+  });
+  test("saldo inicial = 1000 (saldo_inicial enviado como string)", function() {
+    expect(Number(res.body.saldo)).to.equal(1000);
+  });
+  test("não devolve senha nem hash", function() {
+    expect(res.body).to.not.have.property("senha");
+    expect(res.body).to.not.have.property("senha_hash");
+  });
+}

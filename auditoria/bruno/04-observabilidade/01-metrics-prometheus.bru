@@ -1,0 +1,29 @@
+meta {
+  name: Metrics Prometheus
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/metrics
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.headers['content-type']: contains "text/plain"
+}
+
+tests {
+  test("expõe auditoria_eventos_total", function() {
+    expect(res.body).to.contain("auditoria_eventos_total");
+  });
+  test("expõe auditoria_arquivo_bytes", function() {
+    expect(res.body).to.contain("auditoria_arquivo_bytes");
+  });
+}
+
+docs {
+  Corre no fim para que os contadores já tenham valores.
+}

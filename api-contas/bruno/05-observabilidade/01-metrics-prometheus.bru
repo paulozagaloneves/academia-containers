@@ -1,0 +1,32 @@
+meta {
+  name: Metrics Prometheus
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/metrics
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.headers['content-type']: contains "text/plain"
+}
+
+tests {
+  test("expõe http_requests_total", function() {
+    expect(res.body).to.contain("http_requests_total");
+  });
+  test("expõe http_request_duration_seconds", function() {
+    expect(res.body).to.contain("http_request_duration_seconds");
+  });
+  test("expõe tipsbank_login_total", function() {
+    expect(res.body).to.contain("tipsbank_login_total");
+  });
+}
+
+docs {
+  Corre no fim para que os contadores já tenham valores.
+}

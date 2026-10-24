@@ -1,0 +1,102 @@
+# Volume dos ficheiros JSONL da auditoria.
+# Por omissão: ReadWriteOnce na StorageClass default (funciona em kind/minikube/k3d, 1 réplica).
+# Desafio extra (multi-nó): trocar para ReadWriteMany numa StorageClass NFS (ex.: nfs-csi)
+# e subir as réplicas do Deployment para 3.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-tipsbank-auditoria
+  namespace: tipsbank-auditoria
+spec:
+  accessModes: ["ReadWriteOnce"]      # NFS: ["ReadWriteMany"]
+  # storageClassName: nfs-csi
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auditoria
+  namespace: tipsbank-auditoria
+  labels: { app: auditoria, team: auditoria, env: dev }
+spec:
+  replicas: 1                         # NFS/RWX: 3
+  strategy:
+    type: Recreate                    # RWO não pode ser montado por dois pods em nós diferentes durante o rollout
+  selector:
+    matchLabels: { app: auditoria }
+  template:
+    metadata:
+      labels: { app: auditoria, team: auditoria, env: dev }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654                 # torna o volume gravável pelo UID 1654
+        seccompProfile: { type: RuntimeDefault }
+      # Se o teu NFS ignorar fsGroup, descomenta o initContainer (precisa de correr como root):
+      # initContainers:
+      #   - name: auditoria-init
+      #     image: busybox:1.36.1-musl
+      #     command: ["sh", "-c", "chown -R 1654:1654 /data"]
+      #     securityContext: { runAsUser: 0, runAsNonRoot: false }
+      #     volumeMounts: [{ name: auditdata, mountPath: /data }]
+      containers:
+        - name: auditoria
+          image: REGISTRY/tipsbank-auditoria:v1.0.0
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: DATA_DIR
+              value: /data
+            - name: LOG_LEVEL
+              value: INFO
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits:   { cpu: 250m, memory: 192Mi }
+          startupProbe:
+            httpGet: { path: /health/startup, port: http }
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet: { path: /health/live, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /health/ready, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: auditdata
+              mountPath: /data
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: auditdata
+          persistentVolumeClaim:
+            claimName: pvc-tipsbank-auditoria
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auditoria
+  namespace: tipsbank-auditoria
+  labels: { app: auditoria }
+spec:
+  type: ClusterIP
+  selector: { app: auditoria }
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

@@ -1,0 +1,25 @@
+meta {
+  name: Listar arquivos
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/arquivos
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body: isArray
+}
+
+tests {
+  test("inclui o ficheiro de hoje", function() {
+    expect(res.body).to.include(`eventos-${bru.getVar("hoje")}.jsonl`);
+  });
+  test("ordenado", function() {
+    expect(res.body).to.deep.equal([...res.body].sort());
+  });
+}

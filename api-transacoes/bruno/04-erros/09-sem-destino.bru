@@ -1,0 +1,31 @@
+meta {
+  name: Sem destino
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/transferencias
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "origem_id": "11111111-1111-1111-1111-111111111111",
+    "valor": "1.00"
+  }
+}
+
+tests {
+  test("erro de validação devolve 400 ou 422", function() {
+    expect([400, 422]).to.include(res.status);
+  });
+  test("corpo tem detail ou errors", function() {
+    expect(res.body.detail || res.body.errors).to.exist;
+  });
+}

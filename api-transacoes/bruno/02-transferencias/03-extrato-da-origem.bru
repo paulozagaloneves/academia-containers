@@ -1,0 +1,22 @@
+meta {
+  name: Extrato da origem
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/extrato/11111111-1111-1111-1111-111111111111
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body: isArray
+}
+
+tests {
+  test("transação mais recente aparece primeiro", function() {
+    expect(res.body[0].id).to.equal(bru.getVar("txId"));
+  });
+}

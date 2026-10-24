@@ -1,0 +1,32 @@
+meta {
+  name: Compensacao - destino inexistente 404
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/transferencias
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "origem_id": "11111111-1111-1111-1111-111111111111",
+    "destino_id": "00000000-0000-0000-0000-000000000000",
+    "valor": "5.00"
+  }
+}
+
+assert {
+  res.status: eq 404
+  res.body.detail: contains "credito falhou"
+}
+
+docs {
+  O débito na origem é feito, o crédito falha → a API tem de re-creditar a origem.
+}

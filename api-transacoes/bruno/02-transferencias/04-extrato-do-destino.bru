@@ -1,0 +1,25 @@
+meta {
+  name: Extrato do destino
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/extrato/22222222-2222-2222-2222-222222222222?limit=5
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body: isArray
+}
+
+tests {
+  test("inclui a transferência recebida", function() {
+    expect(res.body.map(t => t.id)).to.include(bru.getVar("txId"));
+  });
+  test("respeita limit", function() {
+    expect(res.body.length).to.be.at.most(5);
+  });
+}

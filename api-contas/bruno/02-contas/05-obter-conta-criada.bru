@@ -1,0 +1,16 @@
+meta {
+  name: Obter conta criada
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/contas/{{contaId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: eq "{{contaId}}"
+}

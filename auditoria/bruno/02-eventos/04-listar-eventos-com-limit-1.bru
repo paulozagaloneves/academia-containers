@@ -1,0 +1,21 @@
+meta {
+  name: Listar eventos com limit 1
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/eventos?limit=1
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body: length 1
+  res.body[0].id: eq "{{eventoMinimoId}}"
+}
+
+docs {
+  Devolve as ÚLTIMAS N linhas do ficheiro.
+}

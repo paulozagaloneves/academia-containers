@@ -1,0 +1,303 @@
+openapi: 3.1.0
+info:
+  title: TipsBank — API de Transações
+  version: 1.0.0
+  description: |
+    Transferências entre contas do TipsBank. Orquestra a `api-contas` (débito/crédito)
+    e publica um evento na `auditoria` por cada transferência concluída.
+
+    Contrato de referência para a reescrita em .NET 10. **Não alterar** rotas, nomes de campos
+    (snake_case) nem códigos HTTP — o frontend `web` depende deles.
+
+    Todas as respostas incluem o header `X-App-Version` (valor de `APP_VERSION`).
+    Erros devolvem sempre um objeto JSON com o campo `detail`.
+security: []   # APIs internas, sem autenticação (laboratório)
+servers:
+  - url: http://localhost:8082
+    description: Acesso direto ao container (docker compose)
+  - url: http://localhost:8080/api/transacoes
+    description: Através do proxy reverso do frontend web
+  - url: http://api-transacoes.tipsbank-transacoes.svc.cluster.local:8080
+    description: Dentro do cluster Kubernetes
+tags:
+  - name: health
+  - name: transferencias
+  - name: extrato
+  - name: pix
+  - name: observabilidade
+
+paths:
+  /health/live:
+    get:
+      tags: [health]
+      summary: Liveness — inclui a versão da aplicação
+      operationId: healthLive
+      responses:
+        "200":
+          description: Processo a responder
+          headers:
+            X-App-Version: { $ref: "#/components/headers/XAppVersion" }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, version]
+                properties:
+                  status: { type: string }
+                  version: { type: string }
+              example: { status: ok, version: v1 }
+
+  /health/ready:
+    get:
+      tags: [health]
+      summary: Readiness — a base de dados responde
+      operationId: healthReady
+      responses:
+        "200":
+          description: Pronto
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthStatus" }
+              example: { status: ready }
+        "503":
+          description: Base de dados indisponível (detail com a mensagem da exceção)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
+  /health/startup:
+    get:
+      tags: [health]
+      summary: Startup
+      operationId: healthStartup
+      responses:
+        "200":
+          description: Arranque concluído
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthStatus" }
+              example: { status: started }
+
+  /metrics:
+    get:
+      tags: [observabilidade]
+      summary: Métricas Prometheus
+      operationId: metrics
+      responses:
+        "200":
+          description: Métricas em texto
+          content:
+            text/plain:
+              schema: { type: string }
+              example: |
+                # HELP transacoes_total Transacoes executadas
+                # TYPE transacoes_total counter
+                transacoes_total{status="ok"} 7
+                transacoes_total{status="falha_debito"} 2
+                transacoes_total{status="falha_credito"} 0
+
+  /transferencias:
+    post:
+      tags: [transferencias]
+      summary: Executar transferência
+      description: |
+        Algoritmo (tem de ser respeitado):
+
+        1. Gera `id` UUID v4 para a transação.
+        2. `POST {CONTAS_URL}/contas/{origem_id}/saldo` com `{"valor": "<valor>", "operacao": "debito"}`
+           (timeout 5 s). Se a resposta não for 200 → incrementa `transacoes_total{status="falha_debito"}`
+           e devolve **o mesmo status code** recebido, com `detail = "debito falhou: <corpo da resposta>"`.
+        3. `POST {CONTAS_URL}/contas/{destino_id}/saldo` com `operacao: credito`. Se falhar →
+           **compensa** (re-credita a origem), incrementa `falha_credito` e devolve o status recebido
+           com `detail = "credito falhou: <corpo>"`.
+        4. Grava a linha na tabela `transacoes` com `status = "concluida"`.
+        5. *Best-effort*: `POST {AUDITORIA_URL}/eventos` (timeout 3 s). Se a auditoria falhar,
+           regista um **warning** no log mas a transferência continua a ser um sucesso.
+        6. Incrementa `transacoes_total{status="ok"}` e devolve 201.
+      operationId: transferir
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TransferenciaIn" }
+            examples:
+              seed:
+                summary: Jeferson → LinuxTips SA (valor como string, tal como o frontend envia)
+                value:
+                  origem_id: 11111111-1111-1111-1111-111111111111
+                  destino_id: 22222222-2222-2222-2222-222222222222
+                  valor: "150.75"
+      responses:
+        "201":
+          description: Transferência concluída
+          headers:
+            X-App-Version: { $ref: "#/components/headers/XAppVersion" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TransacaoOut" }
+              example:
+                id: 3b2f6a10-55c1-4e0f-8a39-9f4a1c7e2d11
+                origem_id: 11111111-1111-1111-1111-111111111111
+                destino_id: 22222222-2222-2222-2222-222222222222
+                valor: 150.75
+                status: concluida
+        "404":
+          description: Conta de origem ou destino inexistente (status propagado da api-contas)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+              example: { detail: 'debito falhou: {"detail":"conta nao encontrada"}' }
+        "422":
+          description: Saldo insuficiente (propagado da api-contas) ou corpo inválido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+              example: { detail: 'debito falhou: {"detail":"saldo insuficiente"}' }
+
+  /transferencias/{tx_id}:
+    get:
+      tags: [transferencias]
+      summary: Obter transação por id
+      operationId: obterTransferencia
+      parameters:
+        - name: tx_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Transação
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TransacaoOut" }
+        "404":
+          description: Não encontrada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+              example: { detail: nao encontrada }
+
+  /extrato/{conta_id}:
+    get:
+      tags: [extrato]
+      summary: Extrato de uma conta
+      description: |
+        Transações em que a conta é **origem ou destino**, ordenadas por `criada_em` descendente
+        (mais recente primeiro). Conta sem movimentos (ou inexistente) → lista vazia, 200.
+      operationId: extrato
+      parameters:
+        - name: conta_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          description: Máximo de linhas; valores acima de 100 são limitados a 100.
+          schema: { type: integer, default: 20, minimum: 1 }
+      responses:
+        "200":
+          description: Lista de transações
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TransacaoOut" }
+              example:
+                - id: 3b2f6a10-55c1-4e0f-8a39-9f4a1c7e2d11
+                  origem_id: 11111111-1111-1111-1111-111111111111
+                  destino_id: 22222222-2222-2222-2222-222222222222
+                  valor: 150.75
+                  status: concluida
+
+  /pix:
+    get:
+      tags: [pix]
+      summary: Lista mock de PIX (endpoint de exemplo)
+      description: Devolve `limit` registos gerados em memória (máx. 20), todos com `valor = 100.00` e `status = "concluido"`. Não consulta a BD.
+      operationId: pix
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, minimum: 1, maximum: 20 }
+      responses:
+        "200":
+          description: Lista mock
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PixOut" }
+              example:
+                - id: 0d8b8a7e-1111-4c22-9a33-000000000001
+                  origem_id: 5e9e3c1a-2222-4b33-8c44-000000000002
+                  destino_id: 7a1f2b3c-3333-4d44-9e55-000000000003
+                  valor: 100.00
+                  status: concluido
+
+components:
+  headers:
+    XAppVersion:
+      description: Versão da aplicação (variável `APP_VERSION`) — usado para validar canary/rollouts.
+      schema: { type: string, example: v1 }
+
+  schemas:
+    Decimal:
+      description: Valor monetário. Na entrada aceita número JSON ou string numérica.
+      oneOf:
+        - type: number
+        - type: string
+          pattern: '^-?\d+(\.\d+)?$'
+
+    TransferenciaIn:
+      type: object
+      required: [origem_id, destino_id, valor]
+      properties:
+        origem_id: { type: string }
+        destino_id: { type: string }
+        valor:
+          allOf: [{ $ref: "#/components/schemas/Decimal" }]
+          description: Tem de ser > 0.
+
+    TransacaoOut:
+      type: object
+      required: [id, origem_id, destino_id, valor, status]
+      properties:
+        id: { type: string, format: uuid }
+        origem_id: { type: string }
+        destino_id: { type: string }
+        valor: { $ref: "#/components/schemas/Decimal" }
+        status: { type: string, example: concluida }
+
+    PixOut:
+      type: object
+      required: [id, origem_id, destino_id, valor, status]
+      properties:
+        id: { type: string, format: uuid }
+        origem_id: { type: string, format: uuid }
+        destino_id: { type: string, format: uuid }
+        valor: { $ref: "#/components/schemas/Decimal" }
+        status: { type: string, example: concluido }
+
+    EventoAuditoria:
+      description: Corpo enviado para `POST {AUDITORIA_URL}/eventos` após cada transferência.
+      type: object
+      properties:
+        tipo: { type: string, const: transferencia }
+        transacao_id: { type: string }
+        origem_id: { type: string }
+        destino_id: { type: string }
+        valor: { type: string, description: 'Enviado como string, ex. "150.75"' }
+        versao_app: { type: string, example: v1 }
+
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string }
+
+    Erro:
+      type: object
+      required: [detail]
+      properties:
+        detail: {}
+      additionalProperties: true

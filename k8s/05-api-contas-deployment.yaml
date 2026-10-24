@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-contas
+  namespace: tipsbank-contas
+  labels: { app: api-contas, team: contas, env: dev }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: api-contas }
+  template:
+    metadata:
+      labels: { app: api-contas, team: contas, env: dev }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654          # utilizador "app" das imagens .NET chiseled
+        runAsGroup: 1654
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: api-contas
+          image: REGISTRY/tipsbank-api-contas:v1.0.0     # <- substitui REGISTRY (ex.: ghcr.io/o-teu-user)
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: ConnectionStrings__TipsBank
+              valueFrom: { secretKeyRef: { name: contas-db-secret, key: ConnectionStrings__TipsBank } }
+            - name: LOG_LEVEL
+              value: INFO
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits:   { cpu: 500m, memory: 256Mi }
+          startupProbe:
+            httpGet: { path: /health/startup, port: http }
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet: { path: /health/live, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /health/ready, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-contas
+  namespace: tipsbank-contas
+  labels: { app: api-contas }
+spec:
+  type: ClusterIP
+  selector: { app: api-contas }
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

@@ -1,0 +1,28 @@
+meta {
+  name: Origem inexistente 404
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/transferencias
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "origem_id": "00000000-0000-0000-0000-000000000000",
+    "destino_id": "22222222-2222-2222-2222-222222222222",
+    "valor": "1.00"
+  }
+}
+
+assert {
+  res.status: eq 404
+  res.body.detail: contains "debito falhou"
+}

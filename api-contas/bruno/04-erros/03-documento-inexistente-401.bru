@@ -1,0 +1,31 @@
+meta {
+  name: Documento inexistente 401
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/login
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "documento": "00000000000",
+    "senha": "giropops"
+  }
+}
+
+assert {
+  res.status: eq 401
+  res.body.detail: eq "credenciais invalidas"
+}
+
+docs {
+  Mesma resposta que senha errada — não revelar se o documento existe.
+}

@@ -1,0 +1,145 @@
+# TipsBank (.NET 10) — ambiente local completo.
+# Objetivo: correr a aplicação INTEIRA em containers antes de passar para Kubernetes.
+#
+# Uso:  docker compose up --build
+#       http://localhost:8080   (login: CPF 123.456.789-01 / senha giropops)
+#
+# Cada API espera o código em ./<servico>/src/<Projeto>/ (ver o Dockerfile de cada uma).
+
+name: tipsbank
+
+x-api-hardening: &api-hardening
+  read_only: true            # root filesystem só de leitura (igual ao k8s)
+  tmpfs:
+    - /tmp
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tipsbank-postgres
+    environment:
+      POSTGRES_USER: tipsbank
+      POSTGRES_PASSWORD: tipsbank
+      POSTGRES_DB: tipsbank
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tipsbank"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api-contas:
+    <<: *api-hardening
+    build:
+      context: ./api-contas
+    image: tipsbank-api-contas:v1.0.0
+    container_name: tipsbank-api-contas
+    environment:
+      ConnectionStrings__TipsBank: Host=postgres;Port=5432;Database=tipsbank;Username=tipsbank;Password=tipsbank
+      LOG_LEVEL: INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+
+  # Init container: prepara o volume /var/log/app com dono não-root (UID 1654 = utilizador "app"
+  # das imagens .NET chiseled). Em Kubernetes isto é feito com fsGroup ou um initContainer.
+  transacoes-init:
+    image: busybox:1.36.1-musl
+    container_name: tipsbank-transacoes-init
+    command: ["sh", "-c", "mkdir -p /var/log/app && chown -R 1654:1654 /var/log/app"]
+    volumes:
+      - transacoeslog:/var/log/app
+
+  api-transacoes:
+    <<: *api-hardening
+    build:
+      context: ./api-transacoes
+    image: tipsbank-api-transacoes:v1.0.0
+    container_name: tipsbank-api-transacoes
+    environment:
+      ConnectionStrings__TipsBank: Host=postgres;Port=5432;Database=tipsbank;Username=tipsbank;Password=tipsbank
+      CONTAS_URL: http://api-contas:8080
+      AUDITORIA_URL: http://auditoria:8080
+      APP_VERSION: v1
+      LOG_LEVEL: INFO
+    volumes:
+      - transacoeslog:/var/log/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api-contas:
+        condition: service_started
+      transacoes-init:
+        condition: service_completed_successfully
+    ports:
+      - "8082:8080"
+
+  # Sidecar: lê o ficheiro de log da api-transacoes e envia-o para o seu próprio stdout.
+  # docker compose logs -f log-forwarder
+  log-forwarder:
+    image: busybox:1.36.1-musl
+    container_name: tipsbank-log-forwarder
+    command: ["tail", "-F", "/var/log/app/app.log"]
+    user: "1654:1654"
+    read_only: true
+    volumes:
+      - transacoeslog:/var/log/app:ro
+    depends_on:
+      api-transacoes:
+        condition: service_started
+
+  auditoria-init:
+    image: busybox:1.36.1-musl
+    container_name: tipsbank-auditoria-init
+    command: ["sh", "-c", "mkdir -p /data && chown -R 1654:1654 /data"]
+    volumes:
+      - auditdata:/data
+
+  auditoria:
+    <<: *api-hardening
+    build:
+      context: ./auditoria
+    image: tipsbank-auditoria:v1.0.0
+    container_name: tipsbank-auditoria
+    environment:
+      DATA_DIR: /data
+      LOG_LEVEL: INFO
+    volumes:
+      - auditdata:/data
+    depends_on:
+      auditoria-init:
+        condition: service_completed_successfully
+    ports:
+      - "8083:8080"
+
+  # Frontend (nginx-unprivileged a servir a SPA + proxy reverso para as 3 APIs). NÃO alterar.
+  web:
+    build:
+      context: ./web
+    image: tipsbank-web:v1.0.0
+    container_name: tipsbank-web
+    depends_on:
+      api-contas:
+        condition: service_started
+      api-transacoes:
+        condition: service_started
+      auditoria:
+        condition: service_started
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:
+  auditdata:
+  transacoeslog:

@@ -1,0 +1,24 @@
+meta {
+  name: Listar eventos de hoje
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/eventos
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body: isArray
+}
+
+tests {
+  test("contém os eventos registados", function() {
+    const ids = res.body.map(e => e.id);
+    expect(ids).to.include(bru.getVar("eventoId"));
+    expect(ids).to.include(bru.getVar("eventoMinimoId"));
+  });
+}

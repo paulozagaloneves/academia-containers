@@ -1,0 +1,27 @@
+meta {
+  name: Login conta criada
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/login
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "documento": "{{documento}}",
+    "senha": "segredo123"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: eq "{{contaId}}"
+}

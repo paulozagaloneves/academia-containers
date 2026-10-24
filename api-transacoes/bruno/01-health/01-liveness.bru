@@ -1,0 +1,23 @@
+meta {
+  name: Liveness
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/health/live
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq "ok"
+  res.body.version: isString
+}
+
+tests {
+  test("header X-App-Version igual ao version", function() {
+    expect(res.headers["x-app-version"]).to.equal(res.body.version);
+  });
+}

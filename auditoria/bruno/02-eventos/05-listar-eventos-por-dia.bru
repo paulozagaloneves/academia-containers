@@ -1,0 +1,16 @@
+meta {
+  name: Listar eventos por dia
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/eventos?dia={{hoje}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body: isNotEmpty
+}

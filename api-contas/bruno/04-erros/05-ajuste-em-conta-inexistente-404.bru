@@ -1,0 +1,27 @@
+meta {
+  name: Ajuste em conta inexistente 404
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/contas/00000000-0000-0000-0000-000000000000/saldo
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "valor": "1.00",
+    "operacao": "credito"
+  }
+}
+
+assert {
+  res.status: eq 404
+  res.body.detail: eq "conta nao encontrada"
+}

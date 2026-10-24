@@ -1,0 +1,30 @@
+meta {
+  name: Listar contas
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/contas?limit=200
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body: isArray
+}
+
+tests {
+  test("inclui as contas seed", function() {
+    const ids = res.body.map(c => c.id);
+    expect(ids).to.include("11111111-1111-1111-1111-111111111111");
+    expect(ids).to.include("22222222-2222-2222-2222-222222222222");
+  });
+  test("nunca expõe senha_hash", function() {
+    res.body.forEach(c => {
+      expect(c).to.not.have.property("senha_hash");
+      expect(c).to.not.have.property("senha");
+    });
+  });
+}

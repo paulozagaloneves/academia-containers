@@ -1,0 +1,27 @@
+meta {
+  name: Senha errada 401
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/login
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "documento": "12345678901",
+    "senha": "errada"
+  }
+}
+
+assert {
+  res.status: eq 401
+  res.body.detail: eq "credenciais invalidas"
+}

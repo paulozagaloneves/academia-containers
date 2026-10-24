@@ -1,0 +1,32 @@
+meta {
+  name: Creditar saldo (valor string)
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/contas/{{contaId}}/saldo
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "valor": "50.00",
+    "operacao": "credito"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+tests {
+  test("saldo = 1050", function() {
+    expect(Number(res.body.saldo)).to.equal(1050);
+  });
+}

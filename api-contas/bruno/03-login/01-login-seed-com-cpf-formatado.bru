@@ -1,0 +1,32 @@
+meta {
+  name: Login seed com CPF formatado
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/login
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "documento": "123.456.789-01",
+    "senha": "giropops"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: eq "11111111-1111-1111-1111-111111111111"
+  res.body.documento: eq "12345678901"
+}
+
+docs {
+  A API tem de remover a pontuação do CPF antes de pesquisar.
+}

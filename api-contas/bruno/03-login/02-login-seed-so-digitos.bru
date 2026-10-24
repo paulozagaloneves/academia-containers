@@ -1,0 +1,28 @@
+meta {
+  name: Login seed só dígitos
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/login
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "documento": "98765432100",
+    "senha": "giropops"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: eq "22222222-2222-2222-2222-222222222222"
+  res.body.titular: eq "LinuxTips SA"
+}

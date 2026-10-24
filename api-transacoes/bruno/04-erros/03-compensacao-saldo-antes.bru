@@ -1,0 +1,23 @@
+meta {
+  name: Compensacao - saldo antes
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{contasUrl}}/contas/11111111-1111-1111-1111-111111111111
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+script:post-response {
+  bru.setVar("saldoAntes", Number(res.body.saldo));
+}
+
+docs {
+  GET à api-contas para guardar o saldo atual da conta seed 11111111-1111-1111-1111-111111111111.
+}

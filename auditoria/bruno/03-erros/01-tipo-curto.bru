@@ -1,0 +1,30 @@
+meta {
+  name: Tipo curto
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/eventos
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "tipo": "ab"
+  }
+}
+
+tests {
+  test("erro de validação devolve 400 ou 422", function() {
+    expect([400, 422]).to.include(res.status);
+  });
+  test("corpo tem detail ou errors", function() {
+    expect(res.body.detail || res.body.errors).to.exist;
+  });
+}

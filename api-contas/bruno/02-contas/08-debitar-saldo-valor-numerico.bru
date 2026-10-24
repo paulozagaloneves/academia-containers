@@ -1,0 +1,32 @@
+meta {
+  name: Debitar saldo (valor numérico)
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/contas/{{contaId}}/saldo
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "valor": 25.5,
+    "operacao": "debito"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+tests {
+  test("saldo = 1024.50", function() {
+    expect(Number(res.body.saldo)).to.equal(1024.5);
+  });
+}

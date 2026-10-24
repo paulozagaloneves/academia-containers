@@ -1,0 +1,16 @@
+meta {
+  name: Dia sem ficheiro devolve lista vazia
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/eventos?dia=1999-01-01
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body: length 0
+}
